@@ -1,0 +1,21 @@
+[project]
+name = "urbanwindviz-backend"
+dynamic = ["version"]
+description = "Backend for UrbanWindViz"
+requires-python = ">=3.10"
+
+dependencies = [
+      "fastapi",
+      "uvicorn[standard]"
+]
+
+[project.optional-dependencies]
+dev = [
+      "pytest",
+      "httpx",
+      "ruff"
+]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
