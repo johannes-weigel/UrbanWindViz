@@ -6,7 +6,9 @@ requires-python = ">=3.10"
 
 dependencies = [
       "fastapi",
-      "uvicorn[standard]"
+      "uvicorn[standard]",
+      "numpy",
+      "python-dotenv"
 ]
 
 [project.optional-dependencies]
