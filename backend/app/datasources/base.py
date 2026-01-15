@@ -5,7 +5,7 @@ from typing import Protocol, Sequence
 
 
 @dataclass(frozen=True)
-class Bbox:
+class BBoxData:
     min_x: float
     min_y: float
     max_x: float
@@ -16,7 +16,7 @@ class Bbox:
 class DatasetMeta:
     id: str
     name: str
-    bbox: Bbox
+    bbox: BBoxData
     heights_m: Sequence[int]
 
 

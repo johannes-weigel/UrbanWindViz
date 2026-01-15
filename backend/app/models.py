@@ -4,10 +4,10 @@ from pydantic import BaseModel
 from typing import List
 
 
-class RequestBox(BaseModel):
+class BBoxWgs84(BaseModel):
     minLon: float
-    minLat: float
     maxLon: float
+    minLat: float
     maxLat: float
 
 
@@ -15,7 +15,7 @@ class DatasetInfo(BaseModel):
     id: str
     name: str
 
-    bbox: RequestBox
+    datasetExtent: BBoxWgs84
 
     availableHeightsMeters: List[int]
     

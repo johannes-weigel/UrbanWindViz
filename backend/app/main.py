@@ -5,9 +5,10 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from .models import DatasetInfo, RequestBox
+from .models import DatasetInfo, BBoxWgs84
 from .dataset_registry import load_config, build_source
 from .services.wind_service import WindService
+from .services.crs_transform import bbox_utm_to_wgs84
 
 app = FastAPI(title="UrbanWindViz Backend (NPY/POD)", version="0.2.0")
 
@@ -38,20 +39,15 @@ def health() -> dict:
     }
 
 
+
 @app.get("/api/datasets", response_model=list[DatasetInfo])
 def list_datasets():
-    metas = _service.list_datasets()
     return [
         DatasetInfo(
             id=m.id,
             name=m.name,
-            bbox=RequestBox(
-                minLon=m.bbox.min_x,
-                minLat=m.bbox.min_y,
-                maxLon=m.bbox.max_x,
-                maxLat=m.bbox.max_y,
-            ),
+            datasetExtent=bbox_utm_to_wgs84(m.bbox),
             availableHeightsMeters=list(m.heights_m),
         )
-        for m in metas
+        for m in _service.list_datasets()
     ]

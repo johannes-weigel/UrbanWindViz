@@ -7,7 +7,7 @@ from typing import Dict, Tuple, Optional, cast
 from numpy.typing import NDArray
 import numpy as np
 
-from .base import DatasetMeta, WindDataSource, Bbox
+from .base import DatasetMeta, WindDataSource, BBoxData
 
 
 def _safe_load(path: str) -> np.ndarray:
@@ -77,7 +77,7 @@ class NpyPodFilesystemSource(WindDataSource):
                 DatasetMeta(
                     id=area,
                     name=f"{area} (NPY/POD filesystem)",
-                    bbox=Bbox(sl.x_min, sl.y_min, sl.x_max, sl.y_max),
+                    bbox=BBoxData(sl.x_min, sl.y_min, sl.x_max, sl.y_max),
                     heights_m=heights,
                 )
             )
