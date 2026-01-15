@@ -18,4 +18,18 @@ class DatasetInfo(BaseModel):
     datasetExtent: BBoxWgs84
 
     availableHeightsMeters: List[int]
+
+
+class WindFieldResponse(BaseModel):
+    datasetId: str
+    heightMeters: int
+    bbox: BBoxWgs84
+    nx: int
+    ny: int
+    
+    u_b64: str
+    v_b64: str
+    
+    speedMin: float
+    speedMax: float
     

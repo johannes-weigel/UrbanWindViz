@@ -7,7 +7,7 @@ from typing import Dict, Tuple, Optional, cast
 from numpy.typing import NDArray
 import numpy as np
 
-from .base import DatasetMeta, WindDataSource, BBoxData
+from .base import DatasetMeta, WindDataSource, BBoxData, WindQuery, WindField
 
 
 def _safe_load(path: str) -> np.ndarray:
@@ -86,7 +86,57 @@ class NpyPodFilesystemSource(WindDataSource):
             raise RuntimeError(f"No datasets found under UWV_DATA_DIR={self._data_dir}. Expected: <area>/<height>m/*.npy")
         return datasets
 
+    def get_wind(self, q: WindQuery) -> WindField:
+        sl = self._load_slice(q.dataset_id, q.height_m)
+
+        bbox = q.bbox
+        overlaps = not (
+            bbox.max_x < sl.x_min or bbox.min_x > sl.x_max or 
+            bbox.max_y < sl.y_min or bbox.min_y > sl.y_max
+        )
+
+        if not overlaps:
+            bbox = BBoxData(min_x=sl.x_min, min_y=sl.y_min, max_x=sl.x_max, max_y=sl.y_max)
+
+        mask = (sl.x >= bbox.min_x) & (sl.x <= bbox.max_x) & (sl.y >= bbox.min_y) & (sl.y <= bbox.max_y)
+        idx = np.where(mask)[0]
+
+        if idx.size == 0:
+            return WindField(
+                u=np.full((q.ny, q.nx), np.nan, dtype=np.float32),
+                v=np.full((q.ny, q.nx), np.nan, dtype=np.float32),
+                speed_min=float("nan"), 
+                speed_max=float("nan"),
+                debug={"subset_points": 0}
+            )
+
+        u = sl.Xmean[idx, 0].astype(np.float32)
+        v = sl.Xmean[idx, 1].astype(np.float32)
+
+        from ..services.resample import resample_points_to_grid
+        grid_u, grid_v, debug_resample = resample_points_to_grid(
+            x=sl.x[idx], y=sl.y[idx], u=u, v=v,
+            bbox=bbox, nx=q.nx, ny=q.ny
+        )
+
+        speed = np.hypot(grid_u, grid_v)
+        speed_min = float(np.nanmin(speed)) if np.isfinite(speed).any() else float("nan")
+        speed_max = float(np.nanmax(speed)) if np.isfinite(speed).any() else float("nan")
+
+        return WindField(
+            u=grid_u, v=grid_v,
+            speed_min=speed_min, 
+            speed_max=speed_max,
+            debug={"subset_points": int(idx.size), **debug_resample}
+        )
     
+    def _reconstruct_uv_points(
+        self, sl: _LoadedHeightSlice, idx: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, dict]:
+        u = sl.Xmean[idx, 0].astype(np.float32)
+        v = sl.Xmean[idx, 1].astype(np.float32)
+        return u, v, {"recon_mode": "xmean_uv"}
+
     def _load_slice(self, area: str, height_m: int) -> _LoadedHeightSlice:
         key = (area, height_m)
         if key in self._cache:

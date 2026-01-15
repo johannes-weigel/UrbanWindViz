@@ -53,3 +53,21 @@ def bbox_utm_to_wgs84(b: BBoxData) -> BBoxWgs84:
     
     return BBoxWgs84(minLon=min(lons), maxLon=max(lons),
                      minLat=min(lats), maxLat=max(lats))
+
+def bbox_wgs84_to_utm(b: BBoxWgs84) -> BBoxData:
+    data_crs_str = require_env("UWV_DATA_CRS")
+    utm_crs = CRS.from_user_input(data_crs_str)
+    
+    transformer = Transformer.from_crs(CRS.from_epsg(4326), utm_crs, always_xy=True)
+    
+    corners = [(b.minLon, b.minLat), (b.maxLon, b.minLat), 
+               (b.minLon, b.maxLat), (b.maxLon, b.maxLat)]
+    
+    xs, ys = [], []
+    for lon, lat in corners:
+        x, y = transformer.transform(lon, lat)
+        xs.append(float(x))
+        ys.append(float(y))
+    
+    return BBoxData(min_x=min(xs), max_x=max(xs),
+                    min_y=min(ys), max_y=max(ys))
