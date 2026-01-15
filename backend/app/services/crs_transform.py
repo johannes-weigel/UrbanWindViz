@@ -37,7 +37,7 @@ def point_wgs84_to_utm(*, lon: float, lat: float, utm_zone: int, northern: bool 
     return float(x), float(y)
 
 def bbox_utm_to_wgs84(b: BBoxData) -> BBoxWgs84:
-    data_crs_str = require_env("UWV_DATA_CRS")
+    data_crs_str = require_env("UWV_CRS_WIND")
     utm_crs = CRS.from_user_input(data_crs_str)
     
     transformer = Transformer.from_crs(utm_crs, CRS.from_epsg(4326), always_xy=True)
@@ -55,7 +55,7 @@ def bbox_utm_to_wgs84(b: BBoxData) -> BBoxWgs84:
                      minLat=min(lats), maxLat=max(lats))
 
 def bbox_wgs84_to_utm(b: BBoxWgs84) -> BBoxData:
-    data_crs_str = require_env("UWV_DATA_CRS")
+    data_crs_str = require_env("UWV_CRS_WIND")
     utm_crs = CRS.from_user_input(data_crs_str)
     
     transformer = Transformer.from_crs(CRS.from_epsg(4326), utm_crs, always_xy=True)

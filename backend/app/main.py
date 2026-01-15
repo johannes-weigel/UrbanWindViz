@@ -10,9 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .models import DatasetInfo, WindFieldResponse, BBoxWgs84
 from .dataset_registry import load_config, build_source
-from .datasources.base import WindQuery
 from .services.wind_service import WindService
 from .services.crs_transform import bbox_utm_to_wgs84, bbox_wgs84_to_utm
+
 
 app = FastAPI(title="UrbanWindViz Backend (NPY/POD)", version="0.2.0")
 
@@ -66,8 +66,10 @@ def get_wind(
     min_lat: float = Query(..., alias="minLat"),
     max_lon: float = Query(..., alias="maxLon"),
     max_lat: float = Query(..., alias="maxLat"),
-    nx: int = Query(48, ge=4, le=512),
-    ny: int = Query(36, ge=4, le=512),
+    nx: int = Query(48, ge=4, le=1024),
+    ny: int = Query(36, ge=4, le=1024),
+    ws_ref: float = Query(10.0, alias="wsRef"),
+    wd_ref: float = Query(270.0, alias="wdRef"),
 ) -> WindFieldResponse:
     if not (min_lon < max_lon and min_lat < max_lat):
         raise HTTPException(status_code=400, detail="Invalid bbox")
@@ -77,15 +79,14 @@ def get_wind(
     bbox_data = bbox_wgs84_to_utm(bbox_wgs84)
 
 
-    q = WindQuery(
+    field = _service.get_wind(
         dataset_id=dataset_id,
         height_m=height_meters,
         bbox=bbox_data,
-        nx=nx,
-        ny=ny,
+        nx=nx, ny=ny,
+        ws_ref=ws_ref,
+        wd_ref=wd_ref
     )
-
-    field = _service.get_wind(q)
 
     def to_b64_f32(arr: np.ndarray) -> str:
         arr32 = np.asarray(arr, dtype=np.float32)

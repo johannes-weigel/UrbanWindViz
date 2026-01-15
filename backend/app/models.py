@@ -1,10 +1,8 @@
-from __future__ import annotations
-
 from pydantic import BaseModel
-from typing import List
 
 
 class BBoxWgs84(BaseModel):
+    """Bounding box in WGS84 (lat/lon) for API."""
     minLon: float
     maxLon: float
     minLat: float
@@ -12,24 +10,21 @@ class BBoxWgs84(BaseModel):
 
 
 class DatasetInfo(BaseModel):
+    """API response for dataset metadata."""
     id: str
     name: str
-
     datasetExtent: BBoxWgs84
-
-    availableHeightsMeters: List[int]
+    availableHeightsMeters: list[int]
 
 
 class WindFieldResponse(BaseModel):
+    """API response for gridded wind field."""
     datasetId: str
     heightMeters: int
     bbox: BBoxWgs84
     nx: int
     ny: int
-    
     u_b64: str
     v_b64: str
-    
     speedMin: float
     speedMax: float
-    

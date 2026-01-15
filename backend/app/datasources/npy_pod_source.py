@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Dict, Tuple, Optional, cast
+from typing import Dict, Tuple, Optional
 
-from numpy.typing import NDArray
 import numpy as np
 
-from .base import DatasetMeta, WindDataSource, BBoxData, WindQuery, WindField
+from .base import DatasetMeta, WindDataSource, BBoxData, WindQueryPoints, WindFieldPoints
+from ..utils.pod_reconstruction import reconstruct_pod_field
 
 
 def _safe_load(path: str) -> np.ndarray:
@@ -25,6 +25,7 @@ def _infer_height_from_dir(dirname: str) -> Optional[int]:
             return None
     return None
 
+
 @dataclass
 class _LoadedHeightSlice:
     x: np.ndarray
@@ -34,7 +35,7 @@ class _LoadedHeightSlice:
     Xmean: np.ndarray
     wdNorm: np.ndarray
 
-    Psi: Optional[np.ndarray] = None
+    Psi: np.ndarray
 
     x_min: float = 0.0
     x_max: float = 0.0
@@ -48,7 +49,9 @@ class NpyPodFilesystemSource(WindDataSource):
         self._data_dir = data_dir
         self._cache: Dict[Tuple[str, int], _LoadedHeightSlice] = {}
 
+
     def list_datasets(self) -> list[DatasetMeta]:
+        """Scans filesystem for available POD datasets and returns metadata."""
         datasets: list[DatasetMeta] = []
 
         if not os.path.isdir(self._data_dir):
@@ -59,20 +62,11 @@ class NpyPodFilesystemSource(WindDataSource):
             if not os.path.isdir(area_dir):
                 continue
 
-            heights: list[int] = []
-            for hdir in sorted(os.listdir(area_dir)):
-                full = os.path.join(area_dir, hdir)
-                if not os.path.isdir(full):
-                    continue
-                h = _infer_height_from_dir(hdir)
-                if h is not None:
-                    heights.append(h)
-
+            heights = self._find_heights_for_area(area_dir)
             if not heights:
                 continue
 
-            sample_h = heights[0]
-            sl = self._load_slice(area, sample_h)
+            sl = self._load_slice(area, heights[0])
             datasets.append(
                 DatasetMeta(
                     id=area,
@@ -84,60 +78,36 @@ class NpyPodFilesystemSource(WindDataSource):
 
         if not datasets:
             raise RuntimeError(f"No datasets found under UWV_DATA_DIR={self._data_dir}. Expected: <area>/<height>m/*.npy")
+        
         return datasets
 
-    def get_wind(self, q: WindQuery) -> WindField:
+
+    def get_wind_points(self, q: WindQueryPoints) -> WindFieldPoints:
+        """Returns wind data at irregular CFD points."""
         sl = self._load_slice(q.dataset_id, q.height_m)
-
-        bbox = q.bbox
-        overlaps = not (
-            bbox.max_x < sl.x_min or bbox.min_x > sl.x_max or 
-            bbox.max_y < sl.y_min or bbox.min_y > sl.y_max
-        )
-
-        if not overlaps:
-            bbox = BBoxData(min_x=sl.x_min, min_y=sl.y_min, max_x=sl.x_max, max_y=sl.y_max)
-
-        mask = (sl.x >= bbox.min_x) & (sl.x <= bbox.max_x) & (sl.y >= bbox.min_y) & (sl.y <= bbox.max_y)
+        
+        # Filter points in bbox
+        mask = (sl.x >= q.bbox.min_x) & (sl.x <= q.bbox.max_x) & \
+               (sl.y >= q.bbox.min_y) & (sl.y <= q.bbox.max_y)
         idx = np.where(mask)[0]
-
-        if idx.size == 0:
-            return WindField(
-                u=np.full((q.ny, q.nx), np.nan, dtype=np.float32),
-                v=np.full((q.ny, q.nx), np.nan, dtype=np.float32),
-                speed_min=float("nan"), 
-                speed_max=float("nan"),
-                debug={"subset_points": 0}
-            )
-
-        u = sl.Xmean[idx, 0].astype(np.float32)
-        v = sl.Xmean[idx, 1].astype(np.float32)
-
-        from ..services.resample import resample_points_to_grid
-        grid_u, grid_v, debug_resample = resample_points_to_grid(
-            x=sl.x[idx], y=sl.y[idx], u=u, v=v,
-            bbox=bbox, nx=q.nx, ny=q.ny
+        
+        # POD reconstruction
+        ux, uy, uz = reconstruct_pod_field(
+            N=len(sl.x), Psi=sl.Psi, A=sl.A, Xmean=sl.Xmean,
+            wdNorm=sl.wdNorm, idx=idx, 
+            ws_ref=q.ws_ref, wd_ref=q.wd_ref
         )
-
-        speed = np.hypot(grid_u, grid_v)
-        speed_min = float(np.nanmin(speed)) if np.isfinite(speed).any() else float("nan")
-        speed_max = float(np.nanmax(speed)) if np.isfinite(speed).any() else float("nan")
-
-        return WindField(
-            u=grid_u, v=grid_v,
-            speed_min=speed_min, 
-            speed_max=speed_max,
-            debug={"subset_points": int(idx.size), **debug_resample}
+        
+        return WindFieldPoints(
+            x=sl.x[idx], y=sl.y[idx],
+            u=ux, v=uy, w=uz
         )
     
-    def _reconstruct_uv_points(
-        self, sl: _LoadedHeightSlice, idx: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray, dict]:
-        u = sl.Xmean[idx, 0].astype(np.float32)
-        v = sl.Xmean[idx, 1].astype(np.float32)
-        return u, v, {"recon_mode": "xmean_uv"}
 
     def _load_slice(self, area: str, height_m: int) -> _LoadedHeightSlice:
+        """
+        Loads and caches POD data for a specific area and height from disk
+        """
         key = (area, height_m)
         if key in self._cache:
             return self._cache[key]
@@ -156,34 +126,10 @@ class NpyPodFilesystemSource(WindDataSource):
         A = _safe_load(pick(f"A_{height_m}.npy", "A.npy")).astype(np.float32)
         wdNorm = _safe_load(pick(f"wdNorm_{height_m}.npy", "wdNorm.npy")).astype(np.float32).reshape(-1)
 
-        Xmean_raw = cast(NDArray[np.float32], _safe_load(pick(f"Xmean_{height_m}.npy", "Xmean.npy")).astype(np.float32))
+        Xmean = _safe_load(pick(f"Xmean_{height_m}.npy", "Xmean.npy")).astype(np.float32).reshape(-1)
 
-        if Xmean_raw.ndim == 1:
-            Xmean_flat = Xmean_raw.reshape(-1)
-            if Xmean_flat.size == x.size * 4:
-                Xmean = Xmean_flat.reshape(x.size, 4)
-            else:
-                Xmean = np.zeros((x.size, 4), dtype=np.float32)
-
-        elif Xmean_raw.ndim == 2:
-            if Xmean_raw.shape[0] == x.size and Xmean_raw.shape[1] >= 2:
-                if Xmean_raw.shape[1] == 2:
-                    Xmean = np.concatenate([Xmean_raw, np.zeros((x.size, 2), dtype=np.float32)], axis=1)
-                else:
-                    Xmean = Xmean_raw[:, :4]
-            else:
-                Xmean = np.zeros((x.size, 4), dtype=np.float32)
-
-        else:
-            Xmean = np.zeros((x.size, 4), dtype=np.float32)
-
-        psi = None
-        for cand in [f"Psi_{height_m}.npy", f"Psi_{height_m}m.npy", "Psi.npy"]:
-            p = os.path.join(base, cand)
-            if os.path.exists(p):
-                psi = np.load(p).astype(np.float32)
-                break
-
+        psi = _safe_load(pick(f"Psi_{height_m}.npy", "Psi.npy")).astype(np.float32)
+        
         sl = _LoadedHeightSlice(
             x=x,
             y=y,
@@ -201,5 +147,17 @@ class NpyPodFilesystemSource(WindDataSource):
 
         self._cache[key] = sl
         return sl
+    
 
+    def _find_heights_for_area(self, area_dir: str) -> list[int]:
+        """Finds all height levels (e.g., 70m, 100m) in an area directory."""
+        heights: list[int] = []
+        for hdir in sorted(os.listdir(area_dir)):
+            full = os.path.join(area_dir, hdir)
+            if not os.path.isdir(full):
+                continue
+            h = _infer_height_from_dir(hdir)
+            if h is not None:
+                heights.append(h)
+        return heights
     
