@@ -77,9 +77,4 @@ class WindService:
             debug=debug,
             lon=lon_grid,
             lat=lat_grid,
-            x_points=points.x, 
-            y_points=points.y,
-            u_points=points.u, 
-            v_points=points.v,
-            w_points=points.w
         )

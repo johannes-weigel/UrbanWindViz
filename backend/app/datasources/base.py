@@ -53,12 +53,6 @@ class WindField:
     lon: np.ndarray | None = None
     lat: np.ndarray | None = None
     
-    x_points: np.ndarray | None = None
-    y_points: np.ndarray | None = None
-    u_points: np.ndarray | None = None
-    v_points: np.ndarray | None = None
-    w_points: np.ndarray | None = None
-
 
 class WindDataSource(Protocol):
     """Contract for wind data sources."""
