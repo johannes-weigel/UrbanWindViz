@@ -50,6 +50,9 @@ class WindField:
     speed_max: float
     debug: dict
     
+    lon: np.ndarray | None = None
+    lat: np.ndarray | None = None
+    
     x_points: np.ndarray | None = None
     y_points: np.ndarray | None = None
     u_points: np.ndarray | None = None

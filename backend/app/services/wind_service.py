@@ -1,6 +1,8 @@
 from ..datasources.base import WindDataSource, WindQueryPoints, WindField, BBoxData
 from .resample import resample_points_to_grid
+from .crs_transform import require_env
 import numpy as np
+from pyproj import CRS, Transformer
 
 class WindService:
     """Business logic for wind data operations."""
@@ -20,7 +22,8 @@ class WindService:
         nx: int,
         ny: int,
         ws_ref: float,
-        wd_ref: float
+        wd_ref: float,
+        include_coords: bool = True,
     ) -> WindField:
         """Get gridded wind field (with resampling)."""
         
@@ -45,11 +48,38 @@ class WindService:
         speed_min = float(np.nanmin(speed)) if np.isfinite(speed).any() else float("nan")
         speed_max = float(np.nanmax(speed)) if np.isfinite(speed).any() else float("nan")
         
+        # Compute WGS84 grid coordinates
+        lon_grid = None
+        lat_grid = None
+        
+        if include_coords:
+            w = bbox.max_x - bbox.min_x
+            h = bbox.max_y - bbox.min_y
+            
+            xs = bbox.min_x + (np.arange(nx, dtype=np.float32) + 0.5) / nx * w
+            ys = bbox.min_y + (np.arange(ny, dtype=np.float32) + 0.5) / ny * h
+            
+            xx, yy = np.meshgrid(xs, ys)
+            
+            data_crs_str = require_env("UWV_CRS_WIND")
+            utm_crs = CRS.from_user_input(data_crs_str)
+            transformer = Transformer.from_crs(utm_crs, CRS.from_epsg(4326), always_xy=True)
+            
+            lon_grid, lat_grid = transformer.transform(xx.ravel(), yy.ravel())
+            lon_grid = np.array(lon_grid, dtype=np.float32)
+            lat_grid = np.array(lat_grid, dtype=np.float32)
+        
         return WindField(
-            u=grid_u, v=grid_v,
-            speed_min=speed_min, speed_max=speed_max,
+            u=grid_u.ravel(), 
+            v=grid_v.ravel(),
+            speed_min=speed_min, 
+            speed_max=speed_max,
             debug=debug,
-            x_points=points.x, y_points=points.y,
-            u_points=points.u, v_points=points.v,
+            lon=lon_grid,
+            lat=lat_grid,
+            x_points=points.x, 
+            y_points=points.y,
+            u_points=points.u, 
+            v_points=points.v,
             w_points=points.w
         )

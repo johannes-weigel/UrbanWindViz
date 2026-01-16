@@ -28,3 +28,5 @@ class WindFieldResponse(BaseModel):
     v_b64: str
     speedMin: float
     speedMax: float
+    lon_b64: str | None = None
+    lat_b64: str | None = None

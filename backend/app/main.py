@@ -70,6 +70,7 @@ def get_wind(
     ny: int = Query(36, ge=4, le=1024),
     ws_ref: float = Query(10.0, alias="wsRef"),
     wd_ref: float = Query(270.0, alias="wdRef"),
+    include_coords: bool = Query(True, alias="includeCoords"),
 ) -> WindFieldResponse:
     if not (min_lon < max_lon and min_lat < max_lat):
         raise HTTPException(status_code=400, detail="Invalid bbox")
@@ -85,7 +86,8 @@ def get_wind(
         bbox=bbox_data,
         nx=nx, ny=ny,
         ws_ref=ws_ref,
-        wd_ref=wd_ref
+        wd_ref=wd_ref,
+        include_coords=include_coords,
     )
 
     def to_b64_f32(arr: np.ndarray) -> str:
@@ -102,4 +104,6 @@ def get_wind(
         v_b64=to_b64_f32(field.v),
         speedMin=field.speed_min,
         speedMax=field.speed_max,
+        lon_b64=to_b64_f32(field.lon) if field.lon is not None else None,
+        lat_b64=to_b64_f32(field.lat) if field.lat is not None else None,
     )
